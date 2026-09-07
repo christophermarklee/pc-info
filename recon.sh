@@ -1,66 +1,101 @@
 #!/bin/sh
 #
-# recon.sh - Gather a quick hardware/system report using inxi.
-#
-# Installs inxi (if it isn't already available) using whatever package
-# manager is present on the system, then runs:
-#   inxi -m -C -G -D -M -z
+# recon.sh - Comprehensive hardware/system audit script using inxi.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/christophermarklee/pc-info/main/recon.sh | sudo sh
+#   curl -fsSL https://raw.githubusercontent.com/christophermarklee/pc-info/main/recon.sh | sh
+#   or: sudo sh recon.sh
 #
 
 set -e
 
-# Installing packages requires root. The script is designed to be invoked as
-# `sudo sh recon.sh` (or piped via `curl ... | sudo sh`), so bail out early
-# with a clear message if we don't have the privileges we need.
+# Detect privilege requirements
+SUDO_CMD=""
 if [ "$(id -u)" -ne 0 ]; then
-	echo "This script must be run as root, e.g.: sudo sh $0" >&2
-	exit 1
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO_CMD="sudo"
+    fi
 fi
 
-install_inxi() {
-	if command -v inxi >/dev/null 2>&1; then
-		return 0
-	fi
-
-	echo "inxi not found, attempting to install it..."
-
-	if command -v apt-get >/dev/null 2>&1; then
-		apt-get update -y
-		apt-get install -y inxi
-	elif command -v apt >/dev/null 2>&1; then
-		apt update -y
-		apt install -y inxi
-	elif command -v dnf >/dev/null 2>&1; then
-		dnf install -y inxi
-	elif command -v yum >/dev/null 2>&1; then
-		yum install -y inxi
-	elif command -v pacman >/dev/null 2>&1; then
-		pacman -Sy --noconfirm inxi
-	elif command -v zypper >/dev/null 2>&1; then
-		zypper --non-interactive install inxi
-	elif command -v apk >/dev/null 2>&1; then
-		apk add --no-cache inxi
-	elif command -v brew >/dev/null 2>&1; then
-		brew install inxi
-	elif command -v xbps-install >/dev/null 2>&1; then
-		xbps-install -y inxi
-	elif command -v emerge >/dev/null 2>&1; then
-		emerge --ask=n inxi
-	else
-		echo "Unable to determine package manager to install inxi." >&2
-		echo "Please install inxi manually and re-run this script." >&2
-		exit 1
-	fi
-
-	if ! command -v inxi >/dev/null 2>&1; then
-		echo "inxi installation appears to have failed." >&2
-		exit 1
-	fi
+install_package() {
+    PKG="$1"
+    
+    if command -v apt-get >/dev/null 2>&1; then
+        $SUDO_CMD apt-get update -y
+        $SUDO_CMD apt-get install -y "$PKG" dmidecode pciutils
+    elif command -v apt >/dev/null 2>&1; then
+        $SUDO_CMD apt update -y
+        $SUDO_CMD apt install -y "$PKG" dmidecode pciutils
+    elif command -v dnf >/dev/null 2>&1; then
+        # Enable EPEL on RHEL/CentOS/Rocky/Alma if needed
+        $SUDO_CMD dnf install -y epel-release >/dev/null 2>&1 || true
+        $SUDO_CMD dnf install -y "$PKG" dmidecode pciutils
+    elif command -v yum >/dev/null 2>&1; then
+        $SUDO_CMD yum install -y epel-release >/dev/null 2>&1 || true
+        $SUDO_CMD yum install -y "$PKG" dmidecode pciutils
+    elif command -v pacman >/dev/null 2>&1; then
+        $SUDO_CMD pacman -Sy --noconfirm "$PKG" dmidecode pciutils
+    elif command -v zypper >/dev/null 2>&1; then
+        $SUDO_CMD zypper --non-interactive install "$PKG" dmidecode pciutils
+    elif command -v apk >/dev/null 2>&1; then
+        $SUDO_CMD apk add --no-cache "$PKG" dmidecode pciutils
+    elif command -v brew >/dev/null 2>&1; then
+        # Homebrew prohibits running directly as root
+        if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+            su - "$SUDO_USER" -c "brew install $PKG"
+        else
+            brew install "$PKG"
+        fi
+    elif command -v xbps-install >/dev/null 2>&1; then
+        $SUDO_CMD xbps-install -y "$PKG" dmidecode pciutils
+    elif command -v emerge >/dev/null 2>&1; then
+        $SUDO_CMD emerge --ask=n "$PKG"
+    else
+        echo "Error: Unable to determine package manager to install dependencies." >&2
+        exit 1
+    fi
 }
 
-install_inxi
+check_dependencies() {
+    if ! command -v inxi >/dev/null 2>&1; then
+        echo "inxi not found. Attempting to install inxi and helper utilities..."
+        
+        if [ "$(id -u)" -ne 0 ] && [ -z "$SUDO_CMD" ] && ! command -v brew >/dev/null 2>&1; then
+            echo "Error: Root or sudo privileges required to install packages." >&2
+            exit 1
+        fi
+        
+        install_package inxi
+    fi
 
-inxi -m -C -G -D -M -z
+    if ! command -v inxi >/dev/null 2>&1; then
+        echo "Error: inxi installation failed or binary is missing from PATH." >&2
+        exit 1
+    fi
+}
+
+check_dependencies
+
+# Setup logging destination
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+HOSTNAME_STR="$(hostname 2>/dev/null || echo 'localhost')"
+LOG_FILE="/tmp/recon_${HOSTNAME_STR}_${TIMESTAMP}.log"
+
+# Report flags: Full system specs (-F), memory layout (-m), anonymized security (-z)
+INXI_FLAGS="-Fzm"
+
+echo "=== Starting System Reconnaissance ==="
+echo "Timestamp: $(date)"
+echo "Saving log to: ${LOG_FILE}"
+echo "----------------------------------------"
+
+# Run report and stream output to both stdout and log file
+if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+    # Escalate during run to fetch raw hardware sensors and RAM slot details
+    sudo inxi $INXI_FLAGS 2>&1 | tee "$LOG_FILE"
+else
+    inxi $INXI_FLAGS 2>&1 | tee "$LOG_FILE"
+fi
+
+echo "----------------------------------------"
+echo "Recon report completed and saved to: ${LOG_FILE}"
