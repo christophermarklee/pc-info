@@ -27,7 +27,6 @@ install_package() {
         $SUDO_CMD apt update -y
         $SUDO_CMD apt install -y "$PKG" dmidecode pciutils
     elif command -v dnf >/dev/null 2>&1; then
-        # Enable EPEL on RHEL/CentOS/Rocky/Alma if needed
         $SUDO_CMD dnf install -y epel-release >/dev/null 2>&1 || true
         $SUDO_CMD dnf install -y "$PKG" dmidecode pciutils
     elif command -v yum >/dev/null 2>&1; then
@@ -40,7 +39,6 @@ install_package() {
     elif command -v apk >/dev/null 2>&1; then
         $SUDO_CMD apk add --no-cache "$PKG" dmidecode pciutils
     elif command -v brew >/dev/null 2>&1; then
-        # Homebrew prohibits running directly as root
         if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
             su - "$SUDO_USER" -c "brew install $PKG"
         else
@@ -76,12 +74,10 @@ check_dependencies() {
 
 check_dependencies
 
-# Setup logging destination
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 HOSTNAME_STR="$(hostname 2>/dev/null || echo 'localhost')"
 LOG_FILE="/tmp/recon_${HOSTNAME_STR}_${TIMESTAMP}.log"
 
-# Report flags: Full system specs (-F), memory layout (-m), anonymized security (-z), plain text/no color codes (-c 0)
 INXI_FLAGS="-Fzm -c 0"
 
 echo "=== Starting System Reconnaissance ==="
@@ -89,12 +85,11 @@ echo "Timestamp: $(date)"
 echo "Saving log to: ${LOG_FILE}"
 echo "----------------------------------------"
 
-# Run report and stream output to both stdout and log file
+# Run report, strip any leftover IRC color control sequences, and log output
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
-    # Escalate during run to fetch raw hardware sensors and RAM slot details
-    sudo inxi $INXI_FLAGS 2>&1 | tee "$LOG_FILE"
+    sudo inxi $INXI_FLAGS 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
 else
-    inxi $INXI_FLAGS 2>&1 | tee "$LOG_FILE"
+    inxi $INXI_FLAGS 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
 fi
 
 echo "----------------------------------------"
