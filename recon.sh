@@ -81,8 +81,8 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 HOSTNAME_STR="$(hostname 2>/dev/null || echo 'localhost')"
 LOG_FILE="/tmp/recon_${HOSTNAME_STR}_${TIMESTAMP}.log"
 
-# Report flags: Full system specs (-F), memory layout (-m), anonymized security (-z)
-INXI_FLAGS="-Fzm"
+# Report flags: Full system specs (-F), memory layout (-m), anonymized security (-z), plain text/no color codes (-c 0)
+INXI_FLAGS="-Fzm -c 0"
 
 echo "=== Starting System Reconnaissance ==="
 echo "Timestamp: $(date)"
