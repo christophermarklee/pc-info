@@ -78,7 +78,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 HOSTNAME_STR="$(hostname 2>/dev/null || echo 'localhost')"
 LOG_FILE="/tmp/recon_${HOSTNAME_STR}_${TIMESTAMP}.log"
 
-INXI_FLAGS="-Fzm -c 0"
+set -- -Fzm -c 0
 
 echo "=== Starting System Reconnaissance ==="
 echo "Timestamp: $(date)"
@@ -87,9 +87,9 @@ echo "----------------------------------------"
 
 # Run report, strip any leftover IRC color control sequences, and log output
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
-    sudo inxi $INXI_FLAGS 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
+    sudo inxi "$@" 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
 else
-    inxi $INXI_FLAGS 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
+    inxi "$@" 2>&1 | sed -E 's/\x03[0-9]{1,2}//g; s/\x0f//g' | tee "$LOG_FILE"
 fi
 
 echo "----------------------------------------"
